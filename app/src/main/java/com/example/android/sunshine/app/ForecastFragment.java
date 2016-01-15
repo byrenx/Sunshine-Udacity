@@ -30,9 +30,13 @@ import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 public class ForecastFragment extends Fragment {
+
+    public ArrayAdapter<String> forecastAdapter;
 
     public ForecastFragment() {
     }
@@ -58,7 +62,7 @@ public class ForecastFragment extends Fragment {
 
         //noinspection SimplifiableIfStatement
         if (id == R.id.action_refresh) {
-            new FetchWeatherTask().execute("94043");
+            new FetchWeatherTask().execute("Manila,ph");
             return true;
         }
 
@@ -79,8 +83,8 @@ public class ForecastFragment extends Fragment {
         };
 
         List<String> weekForecast = new ArrayList<String>(Arrays.asList(forecastlist));
-        ArrayAdapter<String> forecastAdapter = new ArrayAdapter<String>(
-                // context, this current parent activity
+        forecastAdapter = new ArrayAdapter<String>(
+                // context, current parent activity
                 getActivity(),
                 //id for list item  layout
                 R.layout.list_item_forcast,
@@ -91,17 +95,18 @@ public class ForecastFragment extends Fragment {
         );
 
         ListView forecast_list_view = (ListView)rootView.findViewById(R.id.list_view_forecast);
+
         forecast_list_view.setAdapter(forecastAdapter);
 
         return rootView;
     }
 
-    private class FetchWeatherTask extends AsyncTask<String, Void, Void> {
+    public class FetchWeatherTask extends AsyncTask<String, Void, String[]> {
         /** The system calls this to perform work in a worker thread and
          * delivers it the parameters given to AsyncTask.execute() */
 
         @Override
-        protected Void doInBackground(String... params) {
+        protected String[] doInBackground(String... params) {
             HttpURLConnection urlConnection = null;
             BufferedReader reader = null;
 
@@ -123,14 +128,13 @@ public class ForecastFragment extends Fragment {
                 final String MODE = "mode";
                 final String COUNT = "cnt";
 
-
-
                 Uri uri = Uri.parse(BASE_URL).buildUpon()
                         .appendQueryParameter(QUERY, params[0])
                         .appendQueryParameter(UNITS, units)
                         .appendQueryParameter(COUNT, Integer.toString(count))
                         .appendQueryParameter(APPID_QUERY, api_key)
                         .appendQueryParameter(MODE, mode).build();
+
                 Log.i("URL", uri.toString());
                 URL url = new URL(uri.toString());
 
@@ -162,9 +166,8 @@ public class ForecastFragment extends Fragment {
                 }
 
                 forecastJsonStr = buffer.toString();
-                Log.i(forecastJsonStr, "Fetch Json");
             } catch (IOException e) {
-                Log.e("PlaceholderFragment", "Error ", e);
+                Log.e("ForecastFragment", "Error ", e);
                 // If the code didn't successfully get the weather data, there's no point in attemping
                 // to parse it.
                 return null;
@@ -176,11 +179,17 @@ public class ForecastFragment extends Fragment {
                     try {
                         reader.close();
                     } catch (final IOException e) {
-                        Log.e("PlaceholderFragment", "Error closing stream", e);
+                        Log.e("ForecastFragment", "Error closing stream", e);
                     }
                 }
             }
-            return null;
+
+            try{
+                return getWeatherDataFromJson(forecastJsonStr, count);
+            }catch(JSONException e){
+                Log.e("JSON parsing Error", "Error", e);
+                return null;
+            }
         }
 
 
@@ -222,7 +231,7 @@ public class ForecastFragment extends Fragment {
             final String OWM_TEMPERATURE = "temp";
             final String OWM_MAX = "max";
             final String OWM_MIN = "min";
-            final String OWM_DESCRIPTION = "main";
+            final String OWM_DESCRIPTION = "description";
 
             JSONObject forecastJson = new JSONObject(forecastJsonStr);
             JSONArray weatherArray = forecastJson.getJSONArray(OWM_LIST);
@@ -235,14 +244,10 @@ public class ForecastFragment extends Fragment {
             // current day, we're going to take advantage of that to get a nice
             // normalized UTC date for all of our weather.
 
-            Time dayTime = new Time();
-            dayTime.setToNow();
+            Calendar dayTime = Calendar.getInstance();
 
             // we start at the day returned by local time. Otherwise this is a mess.
-            int julianStartDay = Time.getJulianDay(System.currentTimeMillis(), dayTime.gmtoff);
-
-            // now we work exclusively in UTC
-            dayTime = new Time();
+            //int julianStartDay = CalendarnDay(System.currentTimeMillis(), dayTime.gmtoff);
 
             String[] resultStrs = new String[numDays];
             for(int i = 0; i < weatherArray.length(); i++) {
@@ -258,8 +263,9 @@ public class ForecastFragment extends Fragment {
                 // into something human-readable, since most people won't read "1400356800" as
                 // "this saturday".
                 long dateTime;
-                // Cheating to convert this to UTC time, which is what we want anyhow
-                dateTime = dayTime.setJulianDay(julianStartDay+i);
+                //increment 1 day
+                dayTime.add(dayTime.DATE, 1);
+                dateTime = dayTime.getTimeInMillis();
                 day = getReadableDateString(dateTime);
 
                 // description is in a child array called "weather", which is 1 element long.
@@ -277,19 +283,23 @@ public class ForecastFragment extends Fragment {
             }
 
             for (String s : resultStrs) {
-                Log.v(LOG_TAG, "Forecast entry: " + s);
+                Log.v("Log Tag", "Forecast entry: " + s);
             }
             return resultStrs;
-
         }
 
         /** The system calls this to perform work in the UI thread and delivers
          * the result from doInBackground() */
 
-    /*
-    protected void onPostExecute(Bitmap result) {
-        mImageView.setImageBitmap(result);
-    }*/
+
+    protected void onPostExecute(String[] forecast_result) {
+        if (forecast_result != null){
+            forecastAdapter.clear();
+            for(String day_forecast: forecast_result){
+                forecastAdapter.add(day_forecast);
+            }
+        }
+    }
 
     }
 }
